@@ -1,0 +1,351 @@
+---
+title: "TIM3 In TARGET AML"
+author: "Jenny Smith"
+date: "August 11, 2017"
+output: html_document
+---
+
+```{r setup}
+library(knitr)
+knitr::opts_chunk$set(tidy.opts=list(width.cutoff=50),tidy=TRUE, fig.align='center', fig.height = 4, fig.width = 6)
+knitr::opts_knit$set(root.dir = '/fh/fast/meshinchi_s/workingDir/TARGET/AML_TARGET/RNA/mRNAseq/analysis/2017.08.22_TIM3_in_AML/')
+options(stringsAsFactors = FALSE)
+```
+
+
+```{r message = FALSE, warning=FALSE}
+library(stringr)
+library(dplyr)
+library(ggplot2)
+library(magrittr)
+library(reshape2)
+library(dplyr)
+getwd()
+```
+
+```{r}
+source("~/scripts/RNAseq_Analysis/Waterfallplots//Waterfall_Barplot_Function_2017.05.22.r")
+source("~/scripts/RNAseq_Analysis/DifferentialExpn_PathwayAnalysis/rmDupGenes_Function.r")
+source("~/scripts/RNAseq_Analysis/DifferentialExpn_PathwayAnalysis/ggplot_Themes_Function.r")
+```
+
+
+Updated on 12/13/18
+
+
+#Read in the Clinical Information
+
+```{r}
+clin <- read.delim("/fh/fast/meshinchi_s/workingDir/TARGET/NormalTissue_GTEX/Clinical/TcgaTargetGTEX_phenotype.txt", sep="\t", header = TRUE)
+
+
+clin <- clin %>%
+  mutate(sample.cols=gsub("-","\\.", sample))
+
+head(clin)
+dim(clin)
+```
+
+```{r}
+# clinData <- read.csv("~/reference_mapping-files/TARGET_AML_current_asof_june30_2016_UPDATED_RhondaEdit_2017.06.08.csv", stringsAsFactors = FALSE, row.names = 1)
+
+
+# merged <- read.csv("~/reference_mapping-files/")
+
+
+```
+
+
+#Read in the Expression Data
+
+```{r}
+TPMS.RBD <- read.csv("~/RNA_seq_Analysis/0000.00.03_Expression_Matrices/TARGET_AML_0531_1031_Ribodepleted_RNAseq_dupGenesRemoved_TPM.csv")
+```
+
+```{r}
+TPM.Gtex <- get(load("/fh/fast/meshinchi_s/workingDir/TARGET/NormalTissue_GTEX/RNA/mRNAseq/level3/gene/2016Sept_UCSC_Illumina_data/Rdata/TcgaTargetGtex_rsem_dupGenesRemoved_tpm.RData"))
+
+head(TPM.Gtex[,1:5])
+# dim(TPM.Gtex) # 58531 19260
+```
+
+```{r}
+TPM <- read.csv("TARGET_AML_LD_HD_MergedTPM.csv", stringsAsFactors = FALSE)
+dim(TPM)
+```
+
+```{r}
+head(TPM[,1:5])
+```
+
+```{r}
+#remove duplicate gene names and set rownames
+TPM <- TPM[,-1]
+TPM <- rmDupGenes(TPM, "geneSymbol")
+dim(TPM$remDups) #645 samples, 625 AML and 20 Normal BM
+```
+
+
+```{r}
+# write.csv(TPM$remDups, "TARGET_AML_HD_LD_Merged_TPM_rmDups.csv")
+# save(TPM, file="TARGET_AML_HD_LD_Merged_TPM_rmDups.RData")
+```
+
+
+#Cohort Information 
+
+```{r}
+cohort <- read.csv("TARGET_AML_Log2Ratios_MergedTPM_PatientUSI_27June2017.csv", stringsAsFactors = FALSE, row.names = 1)
+
+# dim(cohort) #625 patients 
+head(cohort)
+```
+
+```{r}
+# head(clinData[,1:5])
+```
+
+
+#Subset the Expression Data
+
+
+
+```{r}
+TIM3.gtex <- TPM.Gtex %>%
+  rownames_to_column("Gene") %>%
+  filter(Gene == "HAVCR2") %>%
+  gather(Sample, TPM, -Gene)
+
+
+head(TIM3.gtex)
+dim(TIM3.gtex)
+```
+
+```{r}
+TIM3.CDE <- TIM3.gtex %>%
+  inner_join(., clin, by=c("Sample"="sample.cols"))
+
+
+head(TIM3.CDE)
+dim(TIM3.CDE) #19131    10
+```
+
+```{r}
+Normal <- TIM3.CDE %>%
+  filter(grepl("GTEX", X_study, ignore.case = TRUE)) %>%
+  arrange(detailed_category) %>%
+  mutate(category=gsub("-"," ", detailed_category)) %>%
+  mutate(category=gsub(" {1,}","_", category)) %>%
+  mutate(category= factor(category, levels = unique(category)))
+
+
+dim(Normal) #7862   10
+```
+
+```{r}
+Cancer <- TIM3.CDE %>% 
+  filter(grepl("TCGA", X_study)) %>%
+  filter(!detailed_category=="") %>%
+  arrange(detailed_category) %>%
+  mutate(category=gsub("&","and", detailed_category)) %>%
+  mutate(category=gsub(" ","_", category)) %>%
+  mutate(category= factor(category, levels = unique(category)))
+
+
+dim(Cancer) # 10534    10
+```
+
+```{r}
+length(table(Cancer$detailed_category)) #34 categories 
+length(table(Normal$detailed_category)) #54 categories
+```
+
+#Waterfall plot
+
+```{r}
+library(ggpubr)
+```
+
+Alias for TIM3 is HAVCR2
+
+
+```{r}
+phenoVector <- cohort$Cohort %>% set_names(rownames(cohort))
+# log2 <- log2(TPM$remDups + 1)
+# pdf(file="TARGET_AML_TIM3_TPM_Waterfallplot.pdf")
+waterfallPlot(TPM$remDups,"HAVCR2", phenoVector = phenoVector, unit="TPM", BM=TRUE) + labs(title="TIM3 in TARGET AML")
+# dev.off()
+```
+
+
+```{r}
+library(RColorBrewer)
+ colors <- c("#E41A1C", "#377EB8" ,"#4DAF4A" ,
+                "blue1", "#F781BF", "darkmagenta", "#984EA3", "#FF7F00", "turquoise3", 
+                "seagreen2", "maroon", "orchid", "cornflowerblue", "yellow2",
+                "darkblue", "azure4", "chartreuse1", "orange1", 
+                "deeppink", "darkslategray1", "green4", "navajowhite2",
+                "brown3", "darkgoldenrod3", "deepskyblue1", "lightcoral", 
+                "mediumorchid", "saddlebrown","#B3E2CD", 
+             "#FDCDAC" ,"#CBD5E8", "#F4CAE4" ,"#E6F5C9", 
+             "#FFF2AE", "#F1E2CC", "#CCCCCC" )
+
+length(colors)
+```
+
+
+```{r fig.height=7, fig.width=16}
+
+bar.cancer <- ggbarplot(Cancer, x="Sample", y="TPM", 
+                        fill="category", 
+                        color="category", 
+                        sort.val = "desc",
+                        palette = colors,
+                        sort.by.groups = TRUE, 
+                        x.text.angle=0) +
+  theme(axis.text.x = element_blank(),
+        axis.title = element_text(size=20),
+        axis.text.y = element_text(size=20), 
+        legend.text = element_text(size=12), 
+        legend.title = element_blank(),
+        plot.margin = margin(l=5,r=8,  unit="cm"))
+
+# tiff("TCGA_TIM3_Expression_Waterfall_plot.tiff", height = 7, width = 16, units="in", res=300)
+bar.cancer
+# dev.off()
+
+```
+
+```{r fig.height=7, fig.width=16}
+bar.normal <- ggbarplot(Normal, x="Sample", y="TPM", 
+                        fill="category", 
+                        color="category", 
+                        sort.val = "desc",
+                        palette = rep(colors, times=2),
+                        sort.by.groups = TRUE, 
+                        x.text.angle=0) +
+  theme(axis.text.x = element_blank(),
+        axis.title = element_text(size=20),
+        axis.text.y = element_text(size=20), 
+        legend.text = element_text(size=12), 
+        legend.title = element_blank(),
+        plot.margin = margin(l=5,r=8,  unit="cm"))
+
+
+tiff("GTEX_TIM3_Expression_Waterfall_plot.tiff", height = 7, width = 16, units="in", res=300)
+bar.normal
+dev.off()
+```
+
+
+
+#histogram 
+
+```{r}
+BM.idx <- grep("^BM", colnames(TPM$remDups))
+
+
+TIM3.AML <- t(log2(TPM$remDups["HAVCR2", -BM.idx] + 1))
+TIM3.BM <- t(log2(TPM$remDups["HAVCR2", BM.idx] + 1))
+
+
+# pdf(file="TARGET_AML_TIM3_TPM_Histogram_.pdf", height = 8, width = 8)
+par(cex.axis=2, cex.lab=2, mar=c(5,5,5,5))
+hist(TIM3.AML, col = "blue",breaks = seq(0,6.5,by=0.25), xlab = "Log2 TPM", 
+     main="TIM3 Expression", ylim=c(0,60))
+hist(TIM3.BM, col="yellow", breaks = seq(0,6.5,by=0.25), xlab="Log2 TPM", 
+     main="TIM3 Expression", add=TRUE, ylim=c(0,60))
+legend(x=4.5, y=55, c("AML", "NBM"), fill=c("blue", "yellow"), bty="n", cex=1.5)
+# dev.off()
+```
+
+
+# Look at Expression by Cytogenetic Group
+
+```{r}
+merged <- transform(merge(cohort, clinData, by=0),row.names=Row.names, Row.names=NULL)
+head(merged[,1:5])
+# dim(merged) #601 patients
+```
+
+```{r}
+cols=c("Cohort","Primary.Cytogenetic.Code","Fusion.Cluster.Category")
+gg <- merge(merged[, cols], TIM3.AML, by=0)
+gg[gg$Fusion.Cluster.Category == "","Fusion.Cluster.Category"] <- "none"
+head(gg)
+```
+
+```{r}
+#Box plots Functions
+bplots.cyto <- function(df){
+  p <- ggplot(data=df, aes(x=Primary.Cytogenetic.Code, y=HAVCR2, fill=Primary.Cytogenetic.Code)) +
+  geom_boxplot() + 
+    theme_JS + 
+    labs(y="Log2 TPM", title="HAVCR2")
+}
+
+bplots.fusion <- function(df){
+  p <- ggplot(data=df, aes(x=Fusion.Cluster.Category, y=HAVCR2, fill=Fusion.Cluster.Category)) +
+  geom_boxplot() + 
+    theme_JS +
+    theme(legend.position = "none",
+          plot.margin = margin(0.5,0.5,0.5,2,unit = "cm")) +
+    labs(y="Log2 TPM", title="HAVCR2")
+}
+                       
+```
+
+
+```{r}
+cytoBoxPlots <- gg %>% 
+  group_by(Cohort) %>% 
+  do(plot = bplots.cyto(df=.)) 
+
+names(cytoBoxPlots$plot) <- cytoBoxPlots$Cohort
+cytoBoxPlots$plot$Discovery$labels$title <- "Discovery Cohort: TIM3"
+cytoBoxPlots$plot$Validation$labels$title <- "Validation Cohort: TIM3"
+
+cytoBoxPlots$plot
+lapply(names(cytoBoxPlots$plot), function(x) ggsave(filename=paste0(x,"_TIM3_boxplots.pdf"),
+                                                    plot=cytoBoxPlots$plot[[x]],
+                                                    device = "pdf",
+                                                    height = 7,
+                                                    width=11))
+```
+
+
+```{r}
+fusionBoxPlots <- gg %>%
+  group_by(Cohort) %>% 
+  do(plot=bplots.fusion(df=.))
+
+names(fusionBoxPlots$plot) <- fusionBoxPlots$Cohort
+fusionBoxPlots$plot$Discovery$labels$title <- "Discovery Cohort: TIM3"
+fusionBoxPlots$plot$Validation$labels$title <- "Validation Cohort: TIM3"
+
+fusionBoxPlots$plot
+
+lapply(names(fusionBoxPlots$plot), function(x) ggsave(filename = paste0(x, "_TIM3_boxplots_fusions_.pdf"),
+                                                 plot=fusionBoxPlots$plot[[x]],
+                                                 device="pdf",
+                                                 height=7,
+                                                 width=11))
+```
+
+
+#Session Information
+
+```{r}
+sessionInfo()
+```
+
+#Notes:
+
+
+I would like to use dplyr to group the waterfall plots by cytogenetic group as well. in the future. 
+
+https://stackoverflow.com/questions/29034863/apply-a-ggplot-function-per-group-with-dplyr-and-set-title-per-group
+iris %>% group_by(Species) %>% do(plots=ggplot(data=.) +
+         aes(x=Petal.Width, y=Petal.Length) + geom_point() + ggtitle(unique(.$Species)))
+         
+
